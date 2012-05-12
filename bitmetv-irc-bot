@@ -5,7 +5,9 @@ use warnings;
 
 use AnyEvent;
 use AnyEvent::IRC::Client;
-
+use HTTP::Cookies;
+use IO::File;
+use WWW::Mechanize;
 use YAML qw(LoadFile);
 
 my %DISPATCH_IGNORE = map { $_, 1 } qw(
@@ -17,12 +19,24 @@ my %DISPATCH_IGNORE = map { $_, 1 } qw(
   PRIVMSG
   QUIT
 );
-                                   
+my %UNITS = (
+    KB => 1024,
+    MB => 1024 * 1024,
+    GB => 1024 * 1024 * 1024,
+);
 
 my $config = LoadFile($ENV{HOME}.'/.torrent-watcher.yaml');
 
 use Data::Dumper;
 #warn Dumper $config;
+
+my $cookies = HTTP::Cookies->new;
+foreach my $key (qw(uid pass)) {
+    $cookies->set_cookie(1, $key, $config->{feeds}{bitmetv}{$key}, '/', 'www.bitmetv.org', '80');
+}
+my $mech = WWW::Mechanize->new(
+    cookie_jar => $cookies
+);
 
 my $c = AnyEvent->condvar;
 
@@ -127,7 +141,7 @@ sub process_invite {
     my($con, $msg) = @_;
     my $channel = $msg->{params}[1];
     if ($config->{irc}{channels}{$channel}) {
-        debug('received invite to ',$channel,', accepting');
+        debug('accepting invite to ',$channel);
         $con->send_srv('JOIN', $channel);
     }
     else {
@@ -136,6 +150,47 @@ sub process_invite {
 }
 
 sub handle_message {
-    my($con, @data) = @_;
-    warn 'MESSAGE: ', Dumper \@data;
+    my($con, $to, $msg) = @_;
+
+    return unless $msg->{params}[0] eq '#bitmetv.announce';
+    my($type, $rest) = split(/\s/, $msg->{params}[1], 2);
+    return unless $type and $type eq 'BitMeTV.ORG';
+
+    my %data = ($rest =~ m/(\S+):\s+\[\s+(.+?)\s+\]/g);
+    debug 'saw ',$data{Torrents};
+
+    # check exclusions
+    foreach my $test (keys %{$config->{feeds}{bitmetv}{exclude}}) {
+        next unless $config->{feeds}{bitmetv}{exclude}{$test};
+        if ($data{Torrents} =~ m/$test/i) {
+            debug 'excluding [',$test,'] ',$data{Torrents};
+            return;
+        }
+    }
+
+    # check positive regexes
+    my $size = bytes($data{Size});
+    foreach my $test (keys %{$config->{feeds}{bitmetv}{regexes}}) {
+        next unless $data{Torrents} =~ m/$test/i;
+        my $limit = $config->{feeds}{bitmetv}{regexes}{$test};
+        my $bytes = bytes($limit);
+        if ($size > $bytes) {
+            debug 'would fetch ', $data{Torrents}, ' but ', $data{Size}, ' > ', $limit;
+            return;
+        }
+        return fetch_torrent($data{Link});
+    }
+
+    return;
+}
+
+sub bytes {
+    my $str = shift;
+    my($num, $unit) = split(/\s/, $str);
+    return $num * $UNITS{$unit};
+}
+
+sub fetch_torrent {
+    my($page) = @_;
+    debug 'grabbing ', $page;
 }
