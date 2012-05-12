@@ -1,0 +1,141 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use AnyEvent;
+use AnyEvent::IRC::Client;
+
+use YAML qw(LoadFile);
+
+my %DISPATCH_IGNORE = map { $_, 1 } qw(
+  JOIN
+  MODE
+  NOTICE
+  PING
+  PONG
+  PRIVMSG
+  QUIT
+);
+                                   
+
+my $config = LoadFile($ENV{HOME}.'/.torrent-watcher.yaml');
+
+use Data::Dumper;
+#warn Dumper $config;
+
+my $c = AnyEvent->condvar;
+
+my $timer;
+my $con = AnyEvent::IRC::Client->new;
+
+$con->reg_cb(
+    connect => sub {
+        my ($con, $err) = @_;
+        if (defined $err) {
+            warn "connect error: $err\n";
+            return;
+        }
+        debug('connected');
+    },
+    registered => sub {
+        my ($con) = @_;
+        debug('registered');
+        send_for_invite($con);
+    },
+    disconnect => sub {
+        my ($con) = @_;
+        debug('disconnected');
+    },
+);
+
+$con->reg_cb(
+    debug_send => sub {
+        my ($con, @params) = @_;
+        #warn 'SEND: ',Dumper \@params;
+    },
+    debug_recv => sub {
+        dispatch(@_);
+    }
+);
+
+$con->reg_cb(
+    privatemsg => sub { handle_message(@_) },
+    publicmsg  => sub { handle_message(@_) },
+);
+
+$con->enable_ssl;
+irc_connect($con);
+# turn on ping
+# dis/reconnect if ping times out
+$con->enable_ping(
+    300,
+    sub {
+        my ($con) = @_;
+        $con->disconnect;
+        irc_connect($con);
+    }
+);
+
+$c->wait;
+
+exit;
+
+sub debug {
+    warn scalar localtime(time),': ', @_,"\n";
+}
+
+sub irc_connect {
+    my ($con) = @_;
+    $con->connect(
+        $config->{irc}{server},
+        $config->{irc}{port},
+        {   nick     => $config->{irc}{nick},
+            password => $config->{irc}{password},
+            user     => $config->{irc}{name}
+        }
+    );
+}
+
+sub send_for_invite {
+    my ($con) = @_;
+    debug('sending for invite');
+    $con->send_srv(
+        PRIVMSG => $config->{irc}{botname},
+        '!invite ' . $config->{irc}{nick} . ' ' . $config->{irc}{irckey}
+    );
+}
+
+sub dispatch {
+    my($con, $msg) = @_;
+    my $cmd = $msg->{command};
+    if ($cmd eq 'INVITE') {
+        process_invite($con, $msg);
+    }
+    elsif ($DISPATCH_IGNORE{$cmd}) {
+        # do nothing on commands we've configured to ignore
+    }
+    elsif ($cmd =~ m/^\d+$/) {
+        # do nothing on numeric commands
+    }
+    else {
+        warn 'UNRECOGNIZED: ', Dumper $msg;
+    }
+}
+
+sub process_invite {
+    my($con, $msg) = @_;
+    my $channel = $msg->{params}[1];
+    if ($config->{irc}{channels}{$channel}) {
+        debug('received invite to ',$channel,', accepting');
+        $con->send_srv('JOIN', $channel);
+    }
+    else {
+        debug('not interested in ',$channel);
+    }
+}
+
+sub handle_message {
+    my($con, @data) = @_;
+    warn 'MESSAGE: ', Dumper \@data;
+}
