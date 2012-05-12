@@ -195,8 +195,8 @@ sub fetch_torrent {
     debug 'grabbing ', $page;
     $mech->get($page);
     my $link = $mech->find_link(url_regex => qr/download\.php/i);
-    $mech->follow_link(url_regex => qr/download\.php/i);
-    my($file) = ($link =~ m@([^/]+)$@);
+    $mech->get($link);
+    my($file) = ($link->url =~ m@([^/]+)$@);
     my $fh = IO::File->new('>'.$config->{dropdir}.'/'.$file);
     $fh->print($mech->content);
     $fh->close;
