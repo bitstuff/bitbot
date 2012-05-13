@@ -86,6 +86,7 @@ $con->enable_ping(
     300,
     sub {
         my ($con) = @_;
+        debug('reconnecting');
         $con->disconnect;
         irc_connect($con);
     }
@@ -159,19 +160,18 @@ sub handle_message {
     my %data = ($rest =~ m/(\S+):\s+\[\s+(.+?)\s+\]/g);
     debug 'saw ',$data{Torrents};
 
-    # check exclusions
-    foreach my $test (keys %{$config->{feeds}{bitmetv}{exclude}}) {
-        next unless $config->{feeds}{bitmetv}{exclude}{$test};
-        if ($data{Torrents} =~ m/$test/i) {
-            debug 'excluding [',$test,'] ',$data{Torrents};
-            return;
-        }
-    }
-
     # check positive regexes
     my $size = bytes($data{Size});
     foreach my $test (keys %{$config->{feeds}{bitmetv}{regexes}}) {
         next unless $data{Torrents} =~ m/$test/i;
+        # check exclusions
+        foreach my $ex (keys %{$config->{feeds}{bitmetv}{exclude}}) {
+            next unless $config->{feeds}{bitmetv}{exclude}{$ex};
+            if ($data{Torrents} =~ m/$ex/i) {
+                debug 'excluding [', $ex, '] ', $data{Torrents};
+                return;
+            }
+        }
         my $limit = $config->{feeds}{bitmetv}{regexes}{$test};
         my $bytes = bytes($limit);
         if ($size > $bytes) {
