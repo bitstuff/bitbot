@@ -8,12 +8,14 @@ use AnyEvent::IRC::Client;
 use HTTP::Cookies;
 use IO::File;
 use WWW::Mechanize;
+use XML::RSSLite;
 use YAML qw(LoadFile);
 
 my %DISPATCH_IGNORE = map { $_, 1 } qw(
   JOIN
   MODE
   NOTICE
+  PART
   PING
   PONG
   PRIVMSG
@@ -24,6 +26,7 @@ my %UNITS = (
     MB => 1024 * 1024,
     GB => 1024 * 1024 * 1024,
 );
+my %SEEN;
 
 my $config = LoadFile($ENV{HOME}.'/.torrent-watcher.yaml');
 
@@ -76,6 +79,15 @@ $con->reg_cb(
 $con->reg_cb(
     privatemsg => sub { handle_message(@_) },
     publicmsg  => sub { handle_message(@_) },
+);
+
+# setup a repeating timer for rss
+AnyEvent->timer(
+    after    => 0,
+    interval => $config->{rss}{sleep},
+    cb       => sub {
+        check_rss();
+    }
 );
 
 $con->enable_ssl;
@@ -158,27 +170,40 @@ sub handle_message {
     return unless $type and $type eq 'BitMeTV.ORG';
 
     my %data = ($rest =~ m/(\S+):\s+\[\s+(.+?)\s+\]/g);
-    debug 'saw ',$data{Torrents};
+    return test_torrent(
+        title => $data{Torrents},
+        link  => $data{Link},
+        size  => $data{Size},
+    );
+}
+
+sub test_torrent {
+    my %args = @_;
+
+    return if $SEEN{$args{title}};
+
+    debug 'saw ',$args{title};
+    $SEEN{$args{title}} = time;
 
     # check positive regexes
-    my $size = bytes($data{Size});
+    my $size = bytes($args{size});
     foreach my $test (keys %{$config->{feeds}{bitmetv}{regexes}}) {
-        next unless $data{Torrents} =~ m/$test/i;
+        next unless $args{title} =~ m/$test/i;
         # check exclusions
         foreach my $ex (keys %{$config->{feeds}{bitmetv}{exclude}}) {
             next unless $config->{feeds}{bitmetv}{exclude}{$ex};
-            if ($data{Torrents} =~ m/$ex/i) {
-                debug 'excluding [', $ex, '] ', $data{Torrents};
+            if ($args{title} =~ m/$ex/i) {
+                debug 'excluding [', $ex, '] ', $args{title};
                 return;
             }
         }
         my $limit = $config->{feeds}{bitmetv}{regexes}{$test};
         my $bytes = bytes($limit);
         if ($size > $bytes) {
-            debug 'would fetch ', $data{Torrents}, ' but ', $data{Size}, ' > ', $limit;
+            debug 'would fetch ', $args{title}, ' but ', $args{size}, ' > ', $limit;
             return;
         }
-        return fetch_torrent($data{Link});
+        return fetch_torrent($args{link});
     }
 
     return;
@@ -192,13 +217,43 @@ sub bytes {
 
 sub fetch_torrent {
     my($page) = @_;
+    if ($page =~ m/details\.php/) {
+        $mech->get($page);
+        $page = $mech->find_link(url_regex => qr/download\.php/i)->url;
+    }
     debug 'grabbing ', $page;
     $mech->get($page);
-    my $link = $mech->find_link(url_regex => qr/download\.php/i);
-    $mech->get($link);
-    my($file) = ($link->url =~ m@([^/]+)$@);
+    my($file) = ($page =~ m@([^/]+)$@);
     my $fh = IO::File->new('>'.$config->{dropdir}.'/'.$file);
     $fh->print($mech->content);
     $fh->close;
+    return 1;
+}
+
+sub check_rss {
+    debug 'checking rss';
+    $mech->get($config->{feeds}{bitmetv}{uri});
+    my $xml = $mech->content;
+    my %feed;
+    parseRSS(\%feed, \$xml);
+    foreach my $item (@{$feed{item}}) {
+        my $title = $item->{title};
+        my $desc  = $item->{description};
+        my $link  = $item->{link};
+        my %desc  = ($desc =~ m/(\w+):\s+([\w\.\(\) ]+)/gs);
+        test_torrent(
+            title => $title,
+            link  => $link,
+            size  => $desc{Size},
+        );
+    }
+
+    # prune %SEEN, keep entries for 24 hours
+    my $now = time;
+    my $limit = 60*60*24;
+    foreach my $key (keys %SEEN) {
+        delete $SEEN{$key} if ($now - $SEEN{$key} > $limit);
+    }
+
     return 1;
 }
