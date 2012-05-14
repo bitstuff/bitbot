@@ -170,6 +170,7 @@ sub handle_message {
 
     my %data = ($rest =~ m/(\S+):\s+\[\s+(.+?)\s+\]/g);
     return test_torrent(
+        type  => 'irc',
         title => $data{Torrents},
         link  => $data{Link},
         size  => $data{Size},
@@ -181,7 +182,7 @@ sub test_torrent {
 
     return if $SEEN{$args{title}};
 
-    debug 'saw ',$args{title};
+    debug $args{type},' saw ',$args{title};
     $SEEN{$args{title}} = time;
 
     # check positive regexes
@@ -241,6 +242,7 @@ sub check_rss {
         my $link  = $item->{link};
         my %desc  = ($desc =~ m/(\w+):\s+([\w\.\(\) ]+)/gs);
         test_torrent(
+            type  => 'rss',
             title => $title,
             link  => $link,
             size  => $desc{Size},
