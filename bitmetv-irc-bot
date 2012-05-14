@@ -28,7 +28,9 @@ my %UNITS = (
 );
 my %SEEN;
 
-my $config = LoadFile($ENV{HOME}.'/.torrent-watcher.yaml');
+my $timer;
+my $config;
+load_config();
 
 use Data::Dumper;
 #warn Dumper $config;
@@ -44,6 +46,19 @@ my $mech = WWW::Mechanize->new(
 my $c = AnyEvent->condvar;
 
 my $con = AnyEvent::IRC::Client->new;
+
+my %sig;
+$sig{HUP}  = AnyEvent->signal(signal => 'HUP',  cb => sub { reconnect() });
+$sig{USR1} = AnyEvent->signal(signal => 'USR1', cb => sub { load_config() });
+$sig{USR2} = AnyEvent->signal(
+    signal => 'USR2',
+    cb     => sub {
+        debug('dumping %SEEN');
+        foreach my $key (sort { $SEEN{$a} <=> $SEEN{$b} } keys %SEEN) {
+            warn '    ',scalar localtime($SEEN{$key}),': saw ',$key,"\n";
+        }
+    }
+);
 
 $con->reg_cb(
     connect => sub {
@@ -80,32 +95,33 @@ $con->reg_cb(
     publicmsg  => sub { handle_message(@_) },
 );
 
-# setup a repeating timer for rss
-my $timer = AnyEvent->timer(
-    after    => 10,
-    interval => $config->{rss}{sleep},
-    cb       => sub {
-        check_rss();
-    }
-);
-
 $con->enable_ssl;
 irc_connect($con);
 # turn on ping
 # dis/reconnect if ping times out
-$con->enable_ping(
-    300,
-    sub {
-        my ($con) = @_;
-        debug('reconnecting');
-        $con->disconnect;
-        irc_connect($con);
-    }
-);
+$con->enable_ping(300, sub { reconnect() });
 
 $c->wait;
 
 exit;
+
+sub load_config {
+    undef $timer;
+    $config = LoadFile($ENV{HOME}.'/.torrent-watcher.yaml');
+    $timer  = AnyEvent->timer(
+        after    => 20,
+        interval => $config->{rss}{sleep},
+        cb       => sub {
+            check_rss();
+        }
+    );
+}
+
+sub reconnect {
+    debug('reconnecting');
+    $con->disconnect;
+    irc_connect($con);
+}
 
 sub debug {
     warn scalar localtime(time),': ', @_,"\n";
