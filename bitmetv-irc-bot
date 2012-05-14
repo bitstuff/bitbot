@@ -43,7 +43,6 @@ my $mech = WWW::Mechanize->new(
 
 my $c = AnyEvent->condvar;
 
-my $timer;
 my $con = AnyEvent::IRC::Client->new;
 
 $con->reg_cb(
@@ -82,8 +81,8 @@ $con->reg_cb(
 );
 
 # setup a repeating timer for rss
-AnyEvent->timer(
-    after    => 0,
+my $timer = AnyEvent->timer(
+    after    => 10,
     interval => $config->{rss}{sleep},
     cb       => sub {
         check_rss();
