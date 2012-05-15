@@ -14,6 +14,7 @@ use YAML qw(LoadFile);
 my %DISPATCH_IGNORE = map { $_, 1 } qw(
   JOIN
   MODE
+  NICK
   NOTICE
   PART
   PING
