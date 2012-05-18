@@ -121,6 +121,7 @@ sub load_config {
 sub reconnect {
     debug('reconnecting');
     $con->disconnect;
+    sleep 5;
     irc_connect($con);
 }
 
