@@ -109,6 +109,7 @@ exit;
 sub load_config {
     undef $timer;
     $config = LoadFile($ENV{HOME}.'/.torrent-watcher.yaml');
+    debug('config loaded');
     $timer  = AnyEvent->timer(
         after    => 20,
         interval => $config->{rss}{sleep},
