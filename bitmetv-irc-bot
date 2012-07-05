@@ -251,8 +251,12 @@ sub fetch_torrent {
 
 sub check_rss {
     debug 'checking rss';
-    $mech->get($config->{feeds}{bitmetv}{uri});
-    my $xml = $mech->content;
+    my $xml;
+    eval {
+        $mech->get($config->{feeds}{bitmetv}{uri});
+        $xml = $mech->content;
+    };
+    return unless $xml;
     my %feed;
     parseRSS(\%feed, \$xml);
     foreach my $item (@{$feed{item}}) {
