@@ -68,11 +68,11 @@ $con->reg_cb(
             warn "connect error: $err\n";
             return;
         }
-        debug('connected');
+        debug('connected') if $config->{verbose}{startup};
     },
     registered => sub {
         my ($con) = @_;
-        debug('registered');
+        debug('registered') if $config->{verbose}{startup};
         send_for_invite($con);
     },
     disconnect => sub {
@@ -109,7 +109,7 @@ exit;
 sub load_config {
     undef $timer;
     $config = LoadFile($ENV{HOME}.'/.torrent-watcher.yaml');
-    debug('config loaded');
+    debug('config loaded') if $config->{verbose}{startup};
     $timer  = AnyEvent->timer(
         after    => 20,
         interval => $config->{rss}{sleep},
@@ -144,7 +144,7 @@ sub irc_connect {
 
 sub send_for_invite {
     my ($con) = @_;
-    debug('sending for invite');
+    debug('sending for invite') if $config->{verbose}{startup};
     $con->send_srv(
         PRIVMSG => $config->{irc}{botname},
         '!invite ' . $config->{irc}{nick} . ' ' . $config->{irc}{irckey}
@@ -172,11 +172,11 @@ sub process_invite {
     my($con, $msg) = @_;
     my $channel = $msg->{params}[1];
     if ($config->{irc}{channels}{$channel}) {
-        debug('accepting invite to ',$channel);
+        debug('accepting invite to ',$channel) if $config->{verbose}{startup};
         $con->send_srv('JOIN', $channel);
     }
     else {
-        debug('not interested in ',$channel);
+        debug('not interested in ',$channel) if $config->{verbose}{startup};
     }
 }
 
@@ -201,7 +201,7 @@ sub test_torrent {
 
     return if $SEEN{$args{title}};
 
-    debug $args{type},' saw ',$args{title};
+    debug $args{type},' saw ',$args{title} if $config->{verbose}{saw_new_link};
     $SEEN{$args{title}} = time;
 
     # check positive regexes
@@ -212,14 +212,14 @@ sub test_torrent {
         foreach my $ex (keys %{$config->{feeds}{bitmetv}{exclude}}) {
             next unless $config->{feeds}{bitmetv}{exclude}{$ex};
             if ($args{title} =~ m/$ex/i) {
-                debug 'excluding [', $ex, '] ', $args{title};
+                debug 'excluding [', $ex, '] ', $args{title} if $config->{verbose}{saw_new_link};
                 return;
             }
         }
         my $limit = $config->{feeds}{bitmetv}{regexes}{$test};
         my $bytes = bytes($limit);
         if ($size > $bytes) {
-            debug 'would fetch ', $args{title}, ' but ', $args{size}, ' > ', $limit;
+            debug 'would fetch ', $args{title}, ' but ', $args{size}, ' > ', $limit if $config->{verbose}{saw_new_link};
             return;
         }
         return fetch_torrent($args{link});
@@ -240,7 +240,7 @@ sub fetch_torrent {
         $mech->get($page);
         $page = $mech->find_link(url_regex => qr/download\.php/i)->url;
     }
-    debug 'grabbing ', $page;
+    debug 'grabbing ', $page  if $config->{verbose}{fetch_torrent};
     $mech->get($page);
     my($file) = ($page =~ m@([^/]+)$@);
     my $fh = IO::File->new('>'.$config->{dropdir}.'/'.$file);
@@ -250,7 +250,7 @@ sub fetch_torrent {
 }
 
 sub check_rss {
-    debug 'checking rss';
+    debug 'checking rss' if $config->{verbose}{fetch_rss};
     my $xml;
     eval {
         $mech->get($config->{feeds}{bitmetv}{uri});
