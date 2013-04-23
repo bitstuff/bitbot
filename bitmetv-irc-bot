@@ -21,6 +21,7 @@ my %DISPATCH_IGNORE = map { $_, 1 } qw(
   PONG
   PRIVMSG
   QUIT
+  ERROR
 );
 my %UNITS = (
     KB => 1024,
@@ -94,6 +95,7 @@ $con->reg_cb(
 $con->reg_cb(
     privatemsg => sub { handle_message(@_) },
     publicmsg  => sub { handle_message(@_) },
+    error      => sub { handle_error(@_) },
 );
 
 $con->enable_ssl;
@@ -178,6 +180,20 @@ sub process_invite {
     else {
         debug('not interested in ',$channel) if $config->{verbose}{startup};
     }
+}
+
+sub handle_error {
+    my($con, $msg) = @_;
+    if ($msg->{params} and $msg->{params}[0]) {
+        my $text = $msg->{params}[0];
+        # only error I've seen so far is that the link is closing
+        if ($text =~ m/Closing Link/) {
+            reconnect();
+            return;
+        }
+    }
+    use Data::Dumper;
+    debug 'ERROR: ', Dumper $msg;
 }
 
 sub handle_message {
