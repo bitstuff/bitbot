@@ -184,7 +184,7 @@ sub process_invite {
 
 sub handle_error {
     my($con, $msg) = @_;
-    if ($msg->{params} and $msg->{params}[0]) {
+    if (ref($msg) and $msg->{params} and $msg->{params}[0]) {
         my $text = $msg->{params}[0];
         # only error I've seen so far is that the link is closing
         if ($text =~ m/Closing Link/) {
