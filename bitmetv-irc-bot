@@ -147,6 +147,7 @@ sub irc_connect {
 sub send_for_invite {
     my ($con) = @_;
     debug('sending for invite') if $config->{verbose}{startup};
+    sleep 2;
     $con->send_srv(
         PRIVMSG => $config->{irc}{botname},
         '!invite ' . $config->{irc}{nick} . ' ' . $config->{irc}{irckey}
