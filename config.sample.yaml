@@ -1,0 +1,57 @@
+###
+#
+# edit this file and place in $HOME/.torrent-watcher.yaml
+#
+###
+
+# where to drop .torrent files
+dropdir : <DROPDIR>
+
+irc:
+  server: <IRCE SERVER>
+  # secure
+  port: 6697
+  nick: <NICKNAME>
+  name: <NAME>
+  password: <PASSWORD>
+  irckey: <IRCKEY>
+  botname: <BOTNAME TO MESSAGE FOR INVITE>
+  channels:
+    # quote them, otherwise looks like a comment
+    '#<CHANNEL>.<NAME>': 1
+
+rss:
+  # how long to sleep between fetches
+  sleep: 1200
+  # how long to sleep after fetch failure
+  busysleep: 90
+  # how long to keep uris in %SEEN
+  clean_threshold: 43200
+
+verbose:
+  debug: 0
+  saw_new_link: 1
+  fetch_torrent: 1
+  fetch_rss: 0
+  busy: 1
+  startup: 1
+  clean: 0
+  pretend: 0
+
+feeds :
+  <SITE> :
+    base : http://<WEB HOST>/
+    uri : http://<WEB HOST>/rss.php?passkey=<PASSKEY>&uid=<SITE UID>
+    passkey : <PASSKEY>
+    pass : <PASS COOKIE VALUE>
+    uid : <SITE UID>
+    # strings to exclude
+    exclude :
+      # no xvid files
+      "xvid" : 1
+      # nothing that has bee auto-flagged as a possible duplicate
+      "POSSIBLEDUPE" : 1
+    # hash key is regex to match, value is max size of file to grab
+    regexes :
+      # the daily show, but not if bigger than 300 MB
+      "^the.daily.show.*" : 300 MB
